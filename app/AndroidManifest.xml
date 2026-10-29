@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="dev.kreijstal.darlingpocket">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Debuggable while the runtime is brought up: `adb shell run-as` reads the logs. -->
+    <application android:label="Darling Pocket" android:allowBackup="false"
+        android:debuggable="true">
+        <service android:name=".PocketService" android:exported="false" />
+        <activity android:name=".MainActivity" android:exported="true"
+            android:label="Darling Pocket" android:launchMode="2">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- configChanges: orientation, screen layout and size, keyboard, density -->
+        <activity android:name=".ScreenActivity" android:exported="false"
+            android:label="iOS" android:launchMode="2" android:configChanges="7600" />
+    </application>
+</manifest>
