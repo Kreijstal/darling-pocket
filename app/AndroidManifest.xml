@@ -5,10 +5,19 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- The iOS apps' alarms and notifications, when Darling is not running (Alarms). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Debuggable while the runtime is brought up: `adb shell run-as` reads the logs. -->
     <application android:label="Darling Pocket" android:allowBackup="false"
         android:debuggable="true">
         <service android:name=".PocketService" android:exported="false" />
+        <receiver android:name=".Alarms" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <activity android:name=".MainActivity" android:exported="true"
             android:label="Darling Pocket" android:launchMode="2">
             <intent-filter>

@@ -7,9 +7,12 @@ import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -34,6 +37,8 @@ import java.util.zip.GZIPInputStream;
 final class Runtime {
     /** Where adb can put an archive without root, for the first start. */
     static final String ARCHIVE_NAME = "darling-runtime.tar.gz";
+    /** The container's first-start setup, in the runtime (cydia/setup); it does nothing once done. */
+    static final String SETUP = "/usr/libexec/darling-pocket/setup";
 
     final File files, nativeDir, install, prefix, cache, display;
 
@@ -68,7 +73,7 @@ final class Runtime {
         }
     }
 
-    /** Archives offered for installing: the one adb pushed to the app's external files. */
+    /** An archive adb pushed to the app's external files, installed instead of downloading one. */
     static File pushedArchive(Context context) {
         File external = context.getExternalFilesDir(null);
         return external == null ? null : new File(external, ARCHIVE_NAME);
@@ -76,6 +81,46 @@ final class Runtime {
 
     interface Progress {
         void update(String what);
+    }
+
+    /**
+     * Opens the runtime archive this app was built for, from its release
+     * ({@link BuildConfig#RUNTIME_URL}), reporting each megabyte that comes.
+     */
+    static InputStream download(Progress progress) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(BuildConfig.RUNTIME_URL).openConnection();
+        // Hash the exact published tar.gz bytes, without transparent HTTP decoding.
+        connection.setRequestProperty("Accept-Encoding", "identity");
+        connection.setConnectTimeout(30000);
+        connection.setReadTimeout(60000);
+        int code = connection.getResponseCode();
+        if (code != HttpURLConnection.HTTP_OK) {
+            connection.disconnect();
+            throw new IOException("Downloading " + BuildConfig.RUNTIME_URL + ": HTTP " + code);
+        }
+        long total = connection.getContentLengthLong() >> 20;
+        return new FilterInputStream(connection.getInputStream()) {
+            private long done, shown = -1;
+
+            @Override
+            public int read(byte[] buffer, int offset, int length) throws IOException {
+                int n = super.read(buffer, offset, length);
+                if (n > 0 && (done += n) >> 20 != shown) {
+                    shown = done >> 20;
+                    progress.update("Downloading the runtime: " + shown + (total > 0 ? " of " + total : "") + " MB");
+                }
+                return n;
+            }
+
+            @Override
+            public void close() throws IOException {
+                try {
+                    super.close();
+                } finally {
+                    connection.disconnect();
+                }
+            }
+        };
     }
 
     /**
@@ -95,7 +140,8 @@ final class Runtime {
         }
         if (!BuildConfig.RUNTIME_SHA256.equals(sha256)) {
             staged.delete();
-            throw new IOException("This runtime archive is not the one this app was built for (sha256 " + sha256
+            throw new IOException("This runtime archive does not match Darling Pocket " + BuildConfig.VERSION_NAME
+                    + ". Use Install the runtime to download this version's archive. (sha256 " + sha256
                     + ", expected " + BuildConfig.RUNTIME_SHA256 + ")");
         }
 
@@ -116,22 +162,23 @@ final class Runtime {
     }
 
     /**
-     * Creates the container, which Darling does on its first start, and stops
-     * it again. Its output goes to {@code files/logs/container.log}.
+     * Creates the container, which Darling does on its first start, and sets
+     * it up (Cydia: {@code cydia/setup}), then stops it again. The output goes
+     * to {@code files/logs/container.log}.
      */
     void createContainer(Progress progress) throws IOException {
         if (prefix.isDirectory())
             return;
-        progress.update("Creating the container (the first start takes minutes)");
+        progress.update("Creating the container and setting up Cydia (the first start takes minutes)");
         File logs = new File(files, "logs");
         logs.mkdirs();
-        ProcessBuilder builder = shell("/usr/bin/true");
+        ProcessBuilder builder = shell(SETUP);
         builder.redirectOutput(new File(logs, "container.log"));
         try {
             int status = builder.start().waitFor();
             shutdown().start().waitFor();
             if (status != 0 || !prefix.isDirectory())
-                throw new IOException("Darling could not create its container (exit " + status
+                throw new IOException("Darling could not create or set up its container (exit " + status
                         + "); see files/logs/container.log");
         } catch (InterruptedException e) {
             throw new IOException(e);
@@ -165,6 +212,10 @@ final class Runtime {
         args.add("DARLING_SHM_DIR=" + new File(cache, "shm").getAbsolutePath());
         args.add("FONTCONFIG_FILE=" + new File(files, "etc/fonts/fonts.conf").getAbsolutePath());
         args.add("DARLING_POCKET_DISPLAY=" + guestPath(display));
+        // usernotificationsd writes what is coming there, for Android's AlarmManager (Alarms).
+        args.add("USERNOTIFICATIONS_SCHEDULE=" + guestPath(new File(files, Alarms.SCHEDULE)));
+        // The phone's time zone, from the runtime's zoneinfo: Android has no /etc/localtime.
+        args.add("TZ=" + java.util.TimeZone.getDefault().getID());
         for (String arg : command)
             args.add(arg);
         ProcessBuilder builder = new ProcessBuilder(args);
@@ -176,6 +227,8 @@ final class Runtime {
         env.put("LD_LIBRARY_PATH", nativeDir.getAbsolutePath());
         env.put("HOME", files.getAbsolutePath());
         env.put("TMPDIR", cache.getAbsolutePath());
+        // A crashing guest would leave a core of up to hundreds of MB in the container.
+        env.put("DARLING_NO_CORE_DUMPS", "1");
         builder.directory(files);
         builder.redirectErrorStream(true);
         return builder;

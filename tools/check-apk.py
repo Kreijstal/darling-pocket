@@ -5,9 +5,11 @@
 - each library is arm64, has 16 KB pages, and needs only libraries in the
   APK or Android's public NDK libraries;
 - every native method PocketDisplay declares has a JNI symbol.
+- the runtime archive matches the SHA-256 pinned in the APK's dex.
 
-    check-apk.py APK NDK_LLVM_BIN
+    check-apk.py APK NDK_LLVM_BIN [RUNTIME_ARCHIVE]
 """
+import hashlib
 import re
 import subprocess
 import sys
@@ -25,6 +27,7 @@ REQUIRED = ["libdarling.so", "libmldr.so", "libdarlingserver.so", "libpocketdisp
 
 def main():
     apk, llvm = Path(sys.argv[1]), Path(sys.argv[2])
+    runtime = Path(sys.argv[3]) if len(sys.argv) > 3 else ROOT / "out/darling-runtime.tar.gz"
     failures = []
 
     def check(ok, what):
@@ -37,6 +40,7 @@ def main():
         check("AndroidManifest.xml" in names, "manifest")
         check("classes.dex" in names, "classes.dex")
         check("assets/etc/fonts/fonts.conf" in names, "fontconfig's fonts.conf")
+        check("assets/termux/pocketctl.py" in names, "Termux debugging's client")
         libs = sorted(n[len("lib/arm64-v8a/"):] for n in names if n.startswith("lib/arm64-v8a/"))
         for lib in REQUIRED:
             check(lib in libs, "ships " + lib)
@@ -56,6 +60,11 @@ def main():
                       lib + " is an Android executable")
 
         dex = z.read("classes.dex")
+        check(runtime.is_file(), "runtime archive exists")
+        if runtime.is_file():
+            with runtime.open("rb") as archive:
+                digest = hashlib.file_digest(archive, "sha256").hexdigest()
+            check(digest.encode("ascii") in dex, "runtime archive matches the APK's pinned SHA-256")
         check(b"Ldev/kreijstal/darlingpocket/PocketDisplay;" in dex, "the dex has PocketDisplay")
         display = Path(tmp) / "libpocketdisplay.so"
         if display.exists():

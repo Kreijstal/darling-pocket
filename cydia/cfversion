@@ -1,0 +1,6 @@
+#!/bin/sh
+# Stand-in for Cydia's cfversion, which prints kCFCoreFoundationVersionNumber.
+# Cydia makes it the cy+lib.corefoundation package, which tweaks depend on:
+# this is iOS 14's (kCFCoreFoundationVersionNumber_iOS_14_0), not Darling's
+# macOS one.
+echo 1740.00

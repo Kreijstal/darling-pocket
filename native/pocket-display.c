@@ -68,7 +68,7 @@ static void log_line(void *context, const char *line)
 		log("%s", line);
 }
 
-static void keyboard(void *context, int shown)
+static void keyboard(void *context, const struct pocket_keyboard *k)
 {
 	(void) context;
 	JNIEnv *env;
@@ -78,7 +78,9 @@ static void keyboard(void *context, int shown)
 			return;
 		attached = 1;
 	}
-	(*env)->CallStaticVoidMethod(env, display_class, on_keyboard, (jboolean) (shown != 0));
+	(*env)->CallStaticVoidMethod(env, display_class, on_keyboard, (jboolean) (k->shown != 0), (jint) k->keyboard_type,
+	                             (jint) k->return_key, (jint) k->autocapitalization, (jint) k->autocorrection,
+	                             (jint) k->flags);
 	if ((*env)->ExceptionCheck(env))
 		(*env)->ExceptionClear(env);
 	if (attached)
@@ -135,7 +137,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *java, void *reserved)
 	if (found == NULL)
 		return JNI_ERR;
 	display_class = (*env)->NewGlobalRef(env, found);
-	on_keyboard = (*env)->GetStaticMethodID(env, display_class, "onKeyboard", "(Z)V");
+	on_keyboard = (*env)->GetStaticMethodID(env, display_class, "onKeyboard", "(ZIIIII)V");
 	if (on_keyboard == NULL)
 		return JNI_ERR;
 	return JNI_VERSION_1_6;
@@ -246,6 +248,15 @@ JNIEXPORT void JNICALL Java_dev_kreijstal_darlingpocket_PocketDisplay_key(JNIEnv
 }
 
 // UTF-8, from Java: JNI's own strings are modified UTF-8.
+JNIEXPORT void JNICALL Java_dev_kreijstal_darlingpocket_PocketDisplay_keyboardFrame(JNIEnv *env, jclass cls,
+                                                                                     jint height)
+{
+	(void) env;
+	(void) cls;
+	if (server != NULL)
+		pocket_server_keyboard_frame(server, height > 0 ? (uint32_t) height : 0);
+}
+
 JNIEXPORT void JNICALL Java_dev_kreijstal_darlingpocket_PocketDisplay_text(JNIEnv *env, jclass cls, jbyteArray text)
 {
 	(void) cls;
@@ -255,4 +266,20 @@ JNIEXPORT void JNICALL Java_dev_kreijstal_darlingpocket_PocketDisplay_text(JNIEn
 	jbyte *bytes = (*env)->GetByteArrayElements(env, text, NULL);
 	pocket_server_text(server, (const char *) bytes, (size_t) length);
 	(*env)->ReleaseByteArrayElements(env, text, bytes, JNI_ABORT);
+}
+
+JNIEXPORT jint JNICALL Java_dev_kreijstal_darlingpocket_PocketDisplay_windowPart(JNIEnv *env, jclass cls, jint pid,
+																				  jint window, jintArray rect)
+{
+	(void) cls;
+	jint values[4];
+	if (server == NULL || (*env)->GetArrayLength(env, rect) < 4)
+		return -1;
+	(*env)->GetIntArrayRegion(env, rect, 0, 4, values);
+	int32_t part[4] = { values[0], values[1], values[2], values[3] };
+	int shows = pocket_server_window_part(server, (uint32_t) pid, (uint32_t) window, part);
+	for (int i = 0; i < 4; i++)
+		values[i] = part[i];
+	(*env)->SetIntArrayRegion(env, rect, 0, 4, values);
+	return shows;
 }

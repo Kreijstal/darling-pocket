@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.IBinder;
 import android.util.DisplayMetrics;
@@ -17,6 +18,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.security.SecureRandom;
+import java.util.List;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * Keeps Darling's container and the display alive while the screen's
@@ -27,22 +32,53 @@ public final class PocketService extends Service {
     static final String TAG = "DarlingPocket";
     static final String ACTION_LAUNCH = "dev.kreijstal.darlingpocket.LAUNCH";
     static final String ACTION_STOP = "dev.kreijstal.darlingpocket.STOP";
+    /** Turns Termux debugging on or off ({@link #EXTRA_ENABLE}), or makes a new token ({@link #EXTRA_REVOKE}). */
+    static final String ACTION_ADMIN = "dev.kreijstal.darlingpocket.ADMIN";
+    static final String EXTRA_ENABLE = "enable", EXTRA_REVOKE = "revoke";
     /** The app's executable, as the guest names it. */
     static final String EXTRA_EXECUTABLE = "executable";
+    /**
+     * The home screen: the container's setup if it is not done yet, then
+     * frontboardd, which starts SpringBoard and the apps launched from it, and
+     * brings SpringBoard back when they go (cydia/home).
+     */
+    static final String HOME_SCREEN = "/usr/libexec/darling-pocket/home";
 
     private static final String CHANNEL = "container";
+
+    private static PocketService instance;
+    /** What Termux debugging is doing, for the manager. */
+    static volatile String adminStatus = "Termux debugging is off.";
+
+    private AdminServer admin;
 
     private Runtime runtime;
     private Process running;
     private String runningName;
 
+    /** Whether the home screen runs, and with it usernotificationsd, which shows the apps' notifications. */
+    static boolean homeScreenRunning() {
+        PocketService service = instance;
+        if (service == null)
+            return false;
+        synchronized (service) {
+            return service.running != null && service.running.isAlive() && HOME_SCREEN.equals(service.runningName);
+        }
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
+        instance = this;
         runtime = new Runtime(this);
         startForeground(1, notification("Starting"));
         installConfiguration();
         startDisplay(this);
+        WebHost.start(this);
+        Alarms.watch(this);
+        // It stays on across the app's restarts (a crash among them), until turned off.
+        if (admin(this).getBoolean("enabled", false))
+            openAdmin();
     }
 
     /** Starts the display at the phone's size; the screen's activity corrects it to the view's. */
@@ -50,6 +86,7 @@ public final class PocketService extends Service {
         Runtime runtime = new Runtime(context);
         DisplayMetrics metrics = new DisplayMetrics();
         ((WindowManager) context.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRealMetrics(metrics);
+        WebHost.start(context).setScale(scaleMilli(metrics.density) / 1000f);
         if (!PocketDisplay.start(runtime.display.getAbsolutePath(), metrics.widthPixels, metrics.heightPixels,
                 scaleMilli(metrics.density), 0, 0, 0, 0))
             Log.e(TAG, "The display cannot listen on " + runtime.display);
@@ -79,6 +116,8 @@ public final class PocketService extends Service {
             launch(intent.getStringExtra(EXTRA_EXECUTABLE));
         else if (intent != null && ACTION_STOP.equals(intent.getAction()))
             stopApp();
+        else if (intent != null && ACTION_ADMIN.equals(intent.getAction()))
+            setAdmin(intent.getBooleanExtra(EXTRA_ENABLE, false), intent.getBooleanExtra(EXTRA_REVOKE, false));
         return START_STICKY;
     }
 
@@ -106,6 +145,97 @@ public final class PocketService extends Service {
             Log.e(TAG, "Cannot start " + executable, e);
             appendLog(log, "Cannot start: " + e);
         }
+    }
+
+    static SharedPreferences admin(Context context) {
+        return context.getSharedPreferences("admin", MODE_PRIVATE);
+    }
+
+    /** The owner key, as Termux's client pastes it: 64 hex digits. */
+    static String adminToken(Context context) {
+        SharedPreferences prefs = admin(context);
+        String token = prefs.getString("key", "");
+        if (!token.matches("[0-9a-f]{64}")) {
+            byte[] key = new byte[32];
+            new SecureRandom().nextBytes(key);
+            token = Runtime.hex(key);
+            prefs.edit().putString("key", token).commit();
+        }
+        return token;
+    }
+
+    private synchronized void setAdmin(boolean enable, boolean revoke) {
+        if (revoke) {
+            admin(this).edit().remove("key").commit();
+            enable = admin != null;
+        }
+        if (admin != null) {
+            admin.close();
+            admin = null;
+        }
+        admin(this).edit().putBoolean("enabled", enable).commit();
+        adminStatus = "Termux debugging is off.";
+        if (enable)
+            openAdmin();
+    }
+
+    private synchronized void openAdmin() {
+        if (admin != null)
+            return;
+        String token = adminToken(this);
+        byte[] key = new byte[32];
+        for (int i = 0; i < key.length; i++)
+            key[i] = (byte) Integer.parseInt(token.substring(2 * i, 2 * i + 2), 16);
+        try {
+            admin = new AdminServer(AdminServer.DEFAULT_PORT, key, new AdminServer.Backend() {
+                @Override
+                public String status() throws JSONException {
+                    return adminState();
+                }
+
+                @Override
+                public String control(boolean start) throws JSONException {
+                    if (start)
+                        launch(HOME_SCREEN);
+                    else
+                        stopApp();
+                    return adminState();
+                }
+
+                @Override
+                public Process execute(String cwd, List<String> argv) throws IOException {
+                    ProcessBuilder builder;
+                    if ("darling".equals(argv.get(0))) {
+                        // As the app starts its apps: darling shell, with the display and the rest.
+                        builder = runtime.shell(argv.subList(1, argv.size()).toArray(new String[0]));
+                        builder.redirectErrorStream(false);
+                    } else {
+                        builder = new ProcessBuilder(argv);
+                        builder.environment().putAll(runtime.shell().environment());
+                        builder.environment().put("DARLING", new File(runtime.nativeDir, "libdarling.so").getPath());
+                        builder.directory(new File(cwd));
+                    }
+                    return builder.start();
+                }
+            });
+            adminStatus = "Termux debugging listens on 127.0.0.1:" + admin.port() + ".";
+        } catch (IOException | RuntimeException e) {
+            adminStatus = "Termux debugging cannot start: " + e.getMessage();
+            Log.e(TAG, adminStatus);
+        }
+    }
+
+    private String adminState() throws JSONException {
+        String app;
+        synchronized (this) {
+            app = running != null && running.isAlive() ? runningName : null;
+        }
+        return new JSONObject().put("version", BuildConfig.VERSION_NAME)
+                .put("runtimeInstalled", runtime.installed())
+                .put("running", app == null ? JSONObject.NULL : app)
+                .put("data", getApplicationInfo().dataDir)
+                .put("logs", new File(runtime.files, "logs").getPath())
+                .toString(2);
     }
 
     private void watch(final Process process, final String name) {
@@ -179,8 +309,15 @@ public final class PocketService extends Service {
 
     @Override
     public void onDestroy() {
+        synchronized (this) {
+            if (admin != null) {
+                admin.close();
+                admin = null;
+            }
+        }
         stopApp();
         PocketDisplay.stop();
+        instance = null;
         super.onDestroy();
     }
 

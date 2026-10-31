@@ -1,0 +1,92 @@
+#!/bin/bash
+# The container's first start: makes the iOS paths Cydia uses and registers
+# Cydia and what it depends on with dpkg. The packages' files came with the
+# runtime: Procursus's (dpkg, apt and their tools) are unpacked in /var/jb,
+# the rest are debs in /usr/share/darling-pocket/debs. Does nothing once done.
+set -euo pipefail
+marker=/var/lib/cydia/darling-pocket-setup
+# Cydia 1.1.30 runs APT's download methods from its bundle (linked below).
+# Without this its APT looks in /usr/lib/apt/methods, finds nothing, and a
+# refresh waits forever with no download started. Written on every start, so
+# containers set up before it get it too.
+mkdir -p /etc/apt/apt.conf.d
+echo 'Dir::Bin::Methods "/Applications/Cydia.app/";' > /etc/apt/apt.conf.d/50cydia-methods
+here=/usr/libexec/darling-pocket
+debs=/usr/share/darling-pocket/debs
+export PATH=/var/jb/gnu:/usr/bin:/bin:/usr/sbin:/sbin:/var/jb/usr/bin:/var/jb/bin
+# On iOS the apps' home is /var/mobile, so their preferences and the ones
+# tweaks write by path (/User/Library/Preferences) are the same files. Apps
+# here have a macOS home: its Preferences folder becomes a link to iOS's,
+# keeping what is in it.
+prefs=${HOME:-}/Library/Preferences
+if [ -n "${HOME:-}" ] && [ "$HOME" != /var/mobile ] && [ ! -L "$prefs" ]; then
+	mkdir -p /var/mobile/Library/Preferences "$HOME/Library"
+	if [ -d "$prefs" ]; then
+		cp -Rpn "$prefs"/. /var/mobile/Library/Preferences/
+		rm -rf "$prefs"
+	fi
+	ln -s /var/mobile/Library/Preferences "$prefs"
+fi
+if [ -e "$marker" ]; then
+	# A newer runtime may bring placeholders a container set up before it
+	# lacks; dpkg is asked only when the runtime's packages changed.
+	stamp=/var/lib/cydia/darling-pocket-debs
+	if ! ls $debs | cmp -s - "$stamp" 2>/dev/null; then
+		new=
+		for deb in $debs/*_darling.deb; do
+			name=${deb##*/}
+			dpkg-query -W -f='${Status}' "${name%%_*}" 2>/dev/null | grep -q 'ok installed' || new="$new $deb"
+		done
+		[ -z "$new" ] || dpkg --force-not-root -i $new
+		ls $debs > "$stamp"
+	fi
+	exit 0
+fi
+
+# On iOS /var is /private/var; a Darling prefix has both, so the paths Cydia
+# and Procursus use point into /private/var.
+for d in jb mobile cache; do
+	[ -e /var/$d ] || ln -s /private/var/$d /var/$d
+done
+# Cydia's postinst would make its folders as the mobile user, with su.
+mkdir -p /private/var/mobile/Library/Logs/Cydia /private/var/mobile/Library/Caches/com.saurik.Cydia \
+	/private/var/mobile/Library/Cydia \
+	/private/var/cache/apt/archives/partial /private/var/lib/apt/lists/partial /var/lib/cydia
+# Cydia's APT reads its configuration from /etc/apt.
+mkdir -p /etc/apt/apt.conf.d /etc/apt/preferences.d /etc/apt/sources.list.d /etc/apt/trusted.gpg.d
+mkdir -p /var/jb/Library/dpkg/info /var/jb/Library/dpkg/updates /var/jb/Library/dpkg/parts
+touch /var/jb/Library/dpkg/status /var/jb/Library/dpkg/available
+[ -e /private/var/lib/dpkg ] || ln -s /var/jb/Library/dpkg /private/var/lib/dpkg
+mkdir -p /var/lib
+for d in apt dpkg; do
+	[ -e /var/lib/$d ] || ln -s /private/var/lib/$d /var/lib/$d
+done
+[ -e /User ] || ln -s /var/mobile /User
+# Cydia would otherwise move /Applications and other system folders to
+# /var/stash on its first start, as it did on jailbroken iOS's small root.
+touch /.cydia_no_stash
+ln -sfn /var/jb/usr/bin/dpkg /usr/bin/dpkg
+install -m 755 $here/gssc /usr/bin/gssc
+
+# Cydia's packages are iOS's older architecture; Procursus's dpkg is arm64.
+dpkg --print-foreign-architectures | grep -qx iphoneos-arm || dpkg --add-architecture iphoneos-arm
+# What Cydia needs first: it pre-depends on some of these.
+dpkg --force-not-root -i $(ls $debs/*.deb | grep -v -e /cydia_ -e /cydia-lproj_)
+# Cydia (and its translations, which depend on it) are unpacked before they
+# are configured, so Cydia's scripts can be fixed first.
+dpkg --force-not-root --unpack $debs/cydia_*.deb $debs/cydia-lproj_*.deb
+
+# Cydia runs these through cydo; the stand-ins work without root and launchd.
+install -m 755 $here/cydo $here/cfversion $here/setnsfpn $here/du /usr/libexec/cydia/
+# firmware.sh describes the device as packages; tools/make-cydia.sh fixed it
+# for Darling.
+install -m 755 $here/firmware.sh /usr/libexec/cydia/firmware.sh
+dpkg --force-not-root --configure -a
+
+# Cydia 1.1.30 runs APT's download methods from its bundle; Procursus has them.
+for m in http https gpgv copy file rred store; do
+	[ -e /var/jb/usr/libexec/apt/methods/$m ] && ln -sfn /var/jb/usr/libexec/apt/methods/$m /Applications/Cydia.app/$m
+done
+ls $debs > /var/lib/cydia/darling-pocket-debs
+touch "$marker"
+echo "Cydia is set up"

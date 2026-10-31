@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stand-in for Cydia's setnsfpn, which gives directories the "no protection"
+# data protection class. Darling has no data protection.
+exit 0

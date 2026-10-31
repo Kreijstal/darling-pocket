@@ -1,0 +1,41 @@
+# What tools/make-cydia.sh downloads: URL, sha256, and where it goes.
+# procursus: unpacked into /var/jb (Procursus's rootless iOS packages: dpkg, apt and their tools).
+# deb: registered with dpkg on the container's first start (cydia/setup).
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/apt/apt_2.9.4-1_iphoneos-arm64.deb 909670f0b0dcc445c6540e7c58a89c219f11d1a187e13c0a67726463036f33c5 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/bash/bash_5.2.21_iphoneos-arm64.deb 46506863255a3cc7c93066ac483798f3859f70299295bf241d35546fb8606f41 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/bzip2/bzip2_1.0.8_iphoneos-arm64.deb 86a566cc4eb0d48c8ba3c4d4a14e1ae7c51e3090891d8d1fdfde8cfab2c5c11d procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/cacerts/ca-certificates_20240604_all.deb 03835a9bbf25478e4d9255fe1497030fe4a340310948fb31e5c41fd863f66e16 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/coreutils/coreutils_9.5_iphoneos-arm64.deb 74f6507a44c4886d25d2d76194b37df6780868ee4f82384cdafd3bfcea729e8f procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/diffutils/diffutils_3.10_iphoneos-arm64.deb 64c76afd2de914fdf178ab17fbd1dfff045f9942d1b6367efe305849e8dd52fc procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/dpkg/dpkg_1.22.6_iphoneos-arm64.deb 525ec7efe4585ee21c7a056356f35b1b8c885cc1b7175a727514eb11d1ba16c8 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/gnupg/gpgv_2.4.5_iphoneos-arm64.deb 8ced6e6dfbb3a114218595791e2e1b1cfeb9708ffffde119df7536883d37eead procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/apt/libapt-pkg6.0_2.9.4-1_iphoneos-arm64.deb 6cd725bb75f428262d286e034fd0495ae58601d5bc57866fbf71a24dd48125b7 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/libassuan/libassuan0_2.5.7_iphoneos-arm64.deb 848095df3ecf714fdea2b0e198605c9749b439000a8a9f840a96ba2950f064da procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/brotli/libbrotli1_1.1.0_iphoneos-arm64.deb 3a9e02d4b2b0ab03a4d9b3ab42d692dfe44b3badee837d67022862011e626dda procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/libffi/libffi8_3.4.6_iphoneos-arm64.deb f8044beff2ecb507e319823b73aa38c35476995e5c5d5c8d1b6f0256bedc43fa procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/libgcrypt/libgcrypt20_1.10.3_iphoneos-arm64.deb 7882440a8a6575e7776d7d38ff304dbd0dd3286aa75fe1298e69ff9440c3e1c3 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/libgmp10/libgmp10_6.3.0_iphoneos-arm64.deb 833e5094d518b7529faae34324432c871effb5b73a5bdbb25e8e3eed4e1a1e50 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/gnutls/libgnutls30_3.8.5_iphoneos-arm64.deb 18ed7953a5202fcd8390090748e6eba2693b54129483c1f57922106c0c3af4df procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/libgpg-error/libgpg-error0_1.48_iphoneos-arm64.deb 9940eda397ae56cc1f6a2742a844693d9bfd040e2bad8b4873f4a3c89a499f26 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/nettle/libhogweed6_3.9.1_iphoneos-arm64.deb 7f0ecec64c20427f005eec38440ba6b4eb0eb2869770d0ef40ab60f8a5794d81 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/libidn2/libidn2-0_2.3.7_iphoneos-arm64.deb 351e7aa408a817b51008fac60528e8f0a1c3f7bddfba0e4af6e6178b9e4d6bb1 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/gettext/libintl8_0.22_iphoneos-arm64.deb cf92de8901afdd365c2a5e9ced2e55d20c762e7d52e81fe6850f6a56c904763a procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/libiosexec/libiosexec1_1.3.1_iphoneos-arm64.deb fa219a841c7852a293e62f1fce83fc975f272b4875e258575943d4b6d6df10d3 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/lz4/liblz4-1_1.9.4_iphoneos-arm64.deb b4a08fbd8bdb92ecbf7d4ef47b612aed84a31e15ad48d93fdcc9419337b3527b procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/xz/liblzma5_5.4.4_iphoneos-arm64.deb 9c6c606fe1bf1f7546f24f13e29dcc595e0e9be652cc3b28bc3ddf232b46879d procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/libmd/libmd0_1.1.0_iphoneos-arm64.deb 3c7644b30fd6498b995ed73763b5667f7183a986efdace8309aa8731421cc507 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/ncurses/libncursesw6_6.4_iphoneos-arm64.deb 55fc8a78f478bcc44fea6f28fd857ea2f2559f64a2a4f57d21fe9f2bb5683a47 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/nettle/libnettle8_3.9.1_iphoneos-arm64.deb cc55855e561cfac794950518a35dbb1d8eb84325de9e8d5d9f3a810de3a19766 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/npth/libnpth0_1.7_iphoneos-arm64.deb 479a00544060e433835b52cba90845c95903e3667930b72aaa6a434a2d507b68 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/p11-kit/libp11-kit0_0.25.3_iphoneos-arm64.deb f675fcd7b55a81678dba0516d1a3062ba5e7f6234ca27bae32d349274544d010 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/readline/libreadline8_8.2.0-1_iphoneos-arm64.deb 90dba95d506418631aa613192dead6d6950c658b95c86845c12e95cbd5d74748 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/openssl/libssl3_3.2.1_iphoneos-arm64.deb 2758e00db68fc77757f63d6f6d9bc9903aafab9b6548af52e4b7d6fa9d8bdec4 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/libtasn1/libtasn1-6_4.19.0_iphoneos-arm64.deb a14c0c3a9bd7d7bd49ec1c09e090ea33a96fd35e89926e9a839f361117640b19 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/libunistring/libunistring5_1.2_iphoneos-arm64.deb bb4a113a8b5b572429ce19d8f5c763aa25679942a9cdbad81462bcba176397c6 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/xxhash/libxxhash0_0.8.2_iphoneos-arm64.deb 6d85b7d8284f688d31954e8296673fc2ff291cc6e0f587e409283c0eb7120e4b procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/zlib-ng/libz-ng2_2.1.6_iphoneos-arm64.deb d598f9ef668e48508539c3f4a7858bc584c6b91cb2a513d53b99dd07d90bfb35 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/zstd/libzstd1_1.5.5_iphoneos-arm64.deb 67e44abb830a25b8419abaa913e016f8c78861ec900e898ffde1bcf12dfc9119 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/tar/tar_1.35_iphoneos-arm64.deb ce696b90f2d4edc1740b987c93c9040d02b088f66b6e2955ac5bbb8417ad0202 procursus
+https://apt.procurs.us/pool/main/iphoneos-arm64-rootless/1900/xz/xz-utils_5.4.4_iphoneos-arm64.deb 09eca198353c7113619ff2f14f40a5225d87b1bc501500efa80ecc589b55745e procursus
+http://apt.saurik.com/debs/cydia_1.1.30_iphoneos-arm.deb f80a5228b2bacbd8e2640d96dc1b15a5cf0db681d2ed976cf53f1f5c64a9b184 deb
+http://apt.saurik.com/debs/cydia-lproj_1.1.12_iphoneos-arm.deb be77311b214122e5ff7dabd001c96b8cd8a4e479362f3163a557d8dd9b520f31 deb

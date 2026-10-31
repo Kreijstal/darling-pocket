@@ -1,0 +1,7 @@
+#!/bin/bash
+# The APK's home screen: the container's first-start setup, then frontboardd,
+# which starts SpringBoard and the apps opened from it.
+if ! /usr/libexec/darling-pocket/setup >/var/log/darling-pocket-setup.log 2>&1; then
+	echo "darling-pocket: the container setup failed; see /var/log/darling-pocket-setup.log" >&2
+fi
+exec /usr/libexec/frontboardd "$@"

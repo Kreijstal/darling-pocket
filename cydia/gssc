@@ -1,0 +1,4 @@
+#!/bin/sh
+# gssc stand-in: Darling has no GraphicsServices capabilities to report.
+echo "{
+}"

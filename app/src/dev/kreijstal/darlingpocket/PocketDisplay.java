@@ -11,9 +11,27 @@ final class PocketDisplay {
     // PocketProtocol.h's touch phases.
     static final int TOUCH_BEGAN = 0, TOUCH_MOVED = 1, TOUCH_ENDED = 3, TOUCH_CANCELLED = 4;
 
+    /** What an app asks of the soft keyboard: PocketProtocol.h's struct pocket_keyboard. */
+    static final class Keyboard {
+        static final int SECURE = 1, MULTILINE = 2;
+
+        final boolean shown;
+        // The text's UITextInputTraits, with iOS's values.
+        final int type, returnKey, capitalization, correction, flags;
+
+        Keyboard(boolean shown, int type, int returnKey, int capitalization, int correction, int flags) {
+            this.shown = shown;
+            this.type = type;
+            this.returnKey = returnKey;
+            this.capitalization = capitalization;
+            this.correction = correction;
+            this.flags = flags;
+        }
+    }
+
     /** Called on the display's thread when an app asks for the soft keyboard or lets it go. */
     interface KeyboardListener {
-        void onKeyboard(boolean shown);
+        void onKeyboard(Keyboard keyboard);
     }
 
     private static volatile KeyboardListener keyboardListener;
@@ -26,10 +44,10 @@ final class PocketDisplay {
     }
 
     // Called from native code.
-    static void onKeyboard(boolean shown) {
+    static void onKeyboard(boolean shown, int type, int returnKey, int capitalization, int correction, int flags) {
         KeyboardListener listener = keyboardListener;
         if (listener != null)
-            listener.onKeyboard(shown);
+            listener.onKeyboard(new Keyboard(shown, type, returnKey, capitalization, correction, flags));
     }
 
     /** Listens on {@code socket}; sizes and insets are pixels, the scale is pixels per point. */
@@ -51,4 +69,15 @@ final class PocketDisplay {
 
     /** Text an input method commits, UTF-8. */
     static native void text(byte[] text);
+
+    /** The soft keyboard covers {@code height} pixels at the screen's bottom; 0 once it is gone. */
+    static native void keyboardFrame(int height);
+
+    /**
+     * Where part of an app's window is on the screen: {@code rect} is x, y,
+     * width and height in the window's pixels, and becomes the screen's.
+     * Returns 1 when that part shows, 0 when it is hidden or another window
+     * covers it, -1 when the app (its pid) has no such window.
+     */
+    static native int windowPart(int pid, int window, int[] rect);
 }

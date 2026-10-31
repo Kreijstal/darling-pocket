@@ -2,7 +2,8 @@
 #
 #   make                 the APK (out/darling-pocket.apk)
 #   make runtime RUNTIME_ROOT=<arm64 install>/usr/local
-#                        the runtime archive the APK accepts
+#                        the runtime archive the APK accepts, with Cydia
+#                        (make cydia: tools/make-cydia.sh) in it
 #
 # The APK pins the runtime archive's sha256, so build the archive first.
 DARLING ?= $(abspath ../vibedarling-darling)
@@ -19,15 +20,20 @@ LIB := out/lib/arm64-v8a
 APK := out/darling-pocket.apk
 JAVA := $(shell find app/src -name '*.java')
 POCKET := $(DARLING)/tools/pocket-host
-VERSION_CODE := 1
-VERSION_NAME := 0.1
+VERSION_CODE := 3
+VERSION_NAME := 0.1.2
+# Where the app downloads its runtime archive: the release of this version.
+RUNTIME_URL ?= https://github.com/Kreijstal/darling-pocket/releases/download/v$(VERSION_NAME)/darling-runtime.tar.gz
 .DELETE_ON_ERROR:
-.PHONY: all runtime host-programs host-libs verify clean
+.PHONY: all runtime cydia host-programs host-libs verify clean
 
 all: $(APK)
 
-runtime:
-	tools/make-runtime.sh $(RUNTIME_ROOT)
+runtime: cydia
+	tools/make-runtime.sh $(RUNTIME_ROOT) $(CURDIR)/out/cydia/root
+
+cydia:
+	DARLING=$(DARLING) tools/make-cydia.sh
 
 out/darling-runtime.sha256:
 	@echo "Build the runtime archive first: make runtime RUNTIME_ROOT=<arm64 install>/usr/local"; exit 1
@@ -46,10 +52,10 @@ $(LIB)/libpocketdisplay.so: native/pocket-display.c $(POCKET)/pocket-server.c $(
 		native/pocket-display.c $(POCKET)/pocket-server.c -landroid -llog -Wl,-z,max-page-size=16384 -o $@
 	$(LLVM)/llvm-strip $@
 
-out/gen/dev/kreijstal/darlingpocket/BuildConfig.java: out/darling-runtime.sha256
+out/gen/dev/kreijstal/darlingpocket/BuildConfig.java: out/darling-runtime.sha256 Makefile
 	mkdir -p $(@D)
-	printf 'package dev.kreijstal.darlingpocket;\n\nfinal class BuildConfig {\n    /** The runtime archive this APK accepts. */\n    static final String RUNTIME_SHA256 = "%s";\n\n    private BuildConfig() {\n    }\n}\n' \
-		"$$(cat $<)" > $@
+	printf 'package dev.kreijstal.darlingpocket;\n\nfinal class BuildConfig {\n    static final String VERSION_NAME = "%s";\n    /** The runtime archive this APK accepts. */\n    static final String RUNTIME_SHA256 = "%s";\n    /** Where it downloads it from. */\n    static final String RUNTIME_URL = "%s";\n\n    private BuildConfig() {\n    }\n}\n' \
+		"$(VERSION_NAME)" "$$(cat $<)" "$(RUNTIME_URL)" > $@
 
 out/classes.dex: $(JAVA) out/gen/dev/kreijstal/darlingpocket/BuildConfig.java
 	rm -rf out/classes out/dex
@@ -83,7 +89,7 @@ $(APK): out/packed.apk out/debug.keystore
 
 verify: $(APK)
 	java -cp $(SIGNER) com.android.apksigner.ApkSignerTool verify --verbose $(APK)
-	python3 tools/check-apk.py $(APK) $(LLVM)
+	python3 tools/check-apk.py $(APK) $(LLVM) out/darling-runtime.tar.gz
 
 # Keeps the signing key, so a rebuilt APK updates the installed one.
 clean:

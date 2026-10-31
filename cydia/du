@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stand-in for Cydia's du, which is 32-bit ARM only: the system's.
+exec /usr/bin/du "$@"

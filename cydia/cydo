@@ -1,0 +1,16 @@
+#!/bin/sh
+# Darling stand-in for Cydia's cydo. The real one only runs for a Cydia that
+# launchd started, then setuid(0)s; under Darling neither applies.
+export PATH=/var/jb/gnu:/usr/bin:/bin:/usr/sbin:/sbin:/var/jb/usr/bin:/var/jb/bin
+case "$1" in
+/*)
+	# Jailbroken iOS had GNU tools at these paths (Cydia passes GNU options);
+	# here Procursus keeps them under /var/jb.
+	tool=$1
+	shift
+	[ -x "/var/jb$tool" ] && tool=/var/jb$tool
+	exec "$tool" "$@"
+	;;
+esac
+# The prefix belongs to the user, who is not root inside Darling.
+exec /usr/bin/dpkg --force-not-root "$@"

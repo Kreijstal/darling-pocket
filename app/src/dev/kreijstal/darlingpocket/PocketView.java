@@ -19,13 +19,13 @@ import java.nio.charset.StandardCharsets;
  */
 final class PocketView extends SurfaceView {
     // Mac virtual key codes (kVK_*) for Android's keys whose characters the app knows.
-    private static final int MAC_RETURN = 36, MAC_TAB = 48, MAC_DELETE = 51, MAC_ESCAPE = 53,
+    static final int MAC_RETURN = 36, MAC_TAB = 48, MAC_DELETE = 51, MAC_ESCAPE = 53,
             MAC_FORWARD_DELETE = 117, MAC_HOME = 115, MAC_END = 119, MAC_PAGE_UP = 116, MAC_PAGE_DOWN = 121,
             MAC_LEFT = 123, MAC_RIGHT = 124, MAC_DOWN = 125, MAC_UP = 126;
     // NSEvent modifier flags.
     private static final int NS_SHIFT = 1 << 17, NS_CONTROL = 1 << 18, NS_OPTION = 1 << 19, NS_COMMAND = 1 << 20;
 
-    private boolean keyboardWanted;
+    private PocketDisplay.Keyboard keyboard = new PocketDisplay.Keyboard(false, 0, 0, 0, 0, 0);
 
     PocketView(Context context) {
         super(context);
@@ -65,11 +65,11 @@ final class PocketView extends SurfaceView {
         PocketDisplay.touch(phase, event.getPointerId(index) + 1, event.getX(index), event.getY(index));
     }
 
-    /** An app asked for the keyboard; called on the UI thread. */
-    void setKeyboardWanted(boolean wanted) {
-        keyboardWanted = wanted;
+    /** An app asked for the keyboard, or for another kind; called on the UI thread. */
+    void setKeyboard(PocketDisplay.Keyboard wanted) {
+        keyboard = wanted;
         InputMethodManager manager = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (wanted) {
+        if (wanted.shown) {
             requestFocus();
             manager.restartInput(this);
             manager.showSoftInput(this, 0);
@@ -80,15 +80,95 @@ final class PocketView extends SurfaceView {
 
     @Override
     public boolean onCheckIsTextEditor() {
-        return keyboardWanted;
+        return keyboard.shown;
     }
 
     @Override
     public InputConnection onCreateInputConnection(EditorInfo info) {
-        info.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+        info.inputType = inputType(keyboard);
         info.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI | EditorInfo.IME_FLAG_NO_FULLSCREEN
-                | EditorInfo.IME_ACTION_NONE;
+                | imeAction(keyboard.returnKey);
+        if ((keyboard.flags & PocketDisplay.Keyboard.SECURE) != 0)
+            info.imeOptions |= EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING;
         return new Connection(this);
+    }
+
+    /**
+     * Android's kind of keyboard for iOS's UITextInputTraits. Suggestions stay
+     * off: the input method can't read the app's text, so it couldn't correct it.
+     */
+    static int inputType(PocketDisplay.Keyboard keyboard) {
+        boolean secure = (keyboard.flags & PocketDisplay.Keyboard.SECURE) != 0;
+        int type;
+        switch (keyboard.type) {
+        case 4: // UIKeyboardTypeNumberPad
+        case 11: // UIKeyboardTypeASCIICapableNumberPad
+            return InputType.TYPE_CLASS_NUMBER
+                    | (secure ? InputType.TYPE_NUMBER_VARIATION_PASSWORD : 0);
+        case 8: // UIKeyboardTypeDecimalPad
+            return InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL;
+        case 5: // UIKeyboardTypePhonePad
+            return InputType.TYPE_CLASS_PHONE;
+        case 3: // UIKeyboardTypeURL
+        case 10: // UIKeyboardTypeWebSearch
+            type = InputType.TYPE_TEXT_VARIATION_URI;
+            break;
+        case 7: // UIKeyboardTypeEmailAddress
+            type = InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
+            break;
+        case 6: // UIKeyboardTypeNamePhonePad
+            type = InputType.TYPE_TEXT_VARIATION_PERSON_NAME;
+            break;
+        case 9: // UIKeyboardTypeTwitter
+            type = InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE;
+            break;
+        default: // Default, ASCIICapable, NumbersAndPunctuation
+            type = InputType.TYPE_TEXT_VARIATION_NORMAL;
+            break;
+        }
+        if (secure)
+            type = InputType.TYPE_TEXT_VARIATION_PASSWORD;
+        type |= InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+        switch (keyboard.capitalization) {
+        case 1: // UITextAutocapitalizationTypeWords
+            type |= InputType.TYPE_TEXT_FLAG_CAP_WORDS;
+            break;
+        case 2: // UITextAutocapitalizationTypeSentences
+            type |= InputType.TYPE_TEXT_FLAG_CAP_SENTENCES;
+            break;
+        case 3: // UITextAutocapitalizationTypeAllCharacters
+            type |= InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS;
+            break;
+        default:
+            break;
+        }
+        if ((keyboard.flags & PocketDisplay.Keyboard.MULTILINE) != 0)
+            type |= InputType.TYPE_TEXT_FLAG_MULTI_LINE;
+        return type;
+    }
+
+    /** The action on the input method's Enter key, for iOS's UIReturnKeyType. */
+    static int imeAction(int returnKey) {
+        switch (returnKey) {
+        case 1: // Go
+        case 5: // Route
+            return EditorInfo.IME_ACTION_GO;
+        case 2: // Google
+        case 6: // Search
+        case 8: // Yahoo
+            return EditorInfo.IME_ACTION_SEARCH;
+        case 4: // Next
+            return EditorInfo.IME_ACTION_NEXT;
+        case 7: // Send
+            return EditorInfo.IME_ACTION_SEND;
+        case 3: // Join
+        case 9: // Done
+        case 10: // EmergencyCall
+        case 11: // Continue
+            return EditorInfo.IME_ACTION_DONE;
+        default: // Return
+            return EditorInfo.IME_ACTION_NONE;
+        }
     }
 
     @Override
