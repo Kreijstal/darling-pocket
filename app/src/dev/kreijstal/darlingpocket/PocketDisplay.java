@@ -50,6 +50,14 @@ final class PocketDisplay {
             listener.onKeyboard(new Keyboard(shown, type, returnKey, capitalization, correction, flags));
     }
 
+    // Called from native code, on the display's thread, after awaitFrame.
+    static void onFirstFrame() {
+        PocketService.firstFrame();
+    }
+
+    /** Calls {@link #onFirstFrame} when an app next presents a frame. */
+    static native void awaitFrame();
+
     /** Listens on {@code socket}; sizes and insets are pixels, the scale is pixels per point. */
     static native boolean start(String socket, int width, int height, int scaleMilli, int top, int left,
             int bottom, int right);

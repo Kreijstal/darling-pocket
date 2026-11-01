@@ -18,6 +18,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.List;
 import org.json.JSONException;
@@ -50,6 +52,11 @@ public final class PocketService extends Service {
     /** What Termux debugging is doing, for the manager. */
     static volatile String adminStatus = "Termux debugging is off.";
 
+    /** The boot screen's line while the home screen starts, null once it shows (or never started). */
+    private static volatile String bootStage;
+    private static volatile File bootLog;
+    private static final String STAGE = "darling-pocket: stage ";
+
     private AdminServer admin;
 
     private Runtime runtime;
@@ -64,6 +71,49 @@ public final class PocketService extends Service {
         synchronized (service) {
             return service.running != null && service.running.isAlive() && HOME_SCREEN.equals(service.runningName);
         }
+    }
+
+    /**
+     * What the boot screen says, or null when there is nothing to wait for:
+     * the latest stage the home script wrote to its log, or why it stopped.
+     */
+    static String bootStage() {
+        String stage = bootStage;
+        File log = bootLog;
+        if (stage == null || log == null)
+            return stage;
+        String line = lastStage(log);
+        return line != null && !stage.startsWith("The home screen stopped") ? line : stage;
+    }
+
+    /** Shown at once, before the service has started the home screen. */
+    static void expectHomeScreen() {
+        if (!homeScreenRunning())
+            bootStage = "Starting the container";
+    }
+
+    static void firstFrame() {
+        bootStage = null;
+        Log.i(TAG, "The home screen shows");
+    }
+
+    private static String lastStage(File log) {
+        long length = log.length();
+        if (length <= 0)
+            return null;
+        byte[] tail = new byte[(int) Math.min(length, 8192)];
+        try (RandomAccessFile file = new RandomAccessFile(log, "r")) {
+            file.seek(length - tail.length);
+            file.readFully(tail);
+        } catch (IOException e) {
+            return null;
+        }
+        String text = new String(tail, StandardCharsets.UTF_8);
+        int at = text.lastIndexOf(STAGE);
+        if (at < 0)
+            return null;
+        int end = text.indexOf('\n', at);
+        return text.substring(at + STAGE.length(), end < 0 ? text.length() : end).trim();
     }
 
     @Override
@@ -122,8 +172,10 @@ public final class PocketService extends Service {
     }
 
     private synchronized void launch(String executable) {
-        if (executable == null || !runtime.installed())
+        if (executable == null || !runtime.installed()) {
+            bootStage = null;
             return;
+        }
         if (running != null && running.isAlive()) {
             if (executable.equals(runningName))
                 return; // already there
@@ -136,6 +188,12 @@ public final class PocketService extends Service {
         try {
             ProcessBuilder builder = runtime.shell(executable);
             builder.redirectOutput(log);
+            boolean home = HOME_SCREEN.equals(executable);
+            if (home) {
+                bootLog = log;
+                bootStage = "Starting the container";
+                PocketDisplay.awaitFrame();
+            }
             running = builder.start();
             runningName = executable;
             Log.i(TAG, "Started " + executable + ", output in " + log);
@@ -144,6 +202,8 @@ public final class PocketService extends Service {
         } catch (IOException e) {
             Log.e(TAG, "Cannot start " + executable, e);
             appendLog(log, "Cannot start: " + e);
+            if (bootStage != null)
+                bootStage = "The home screen stopped: cannot start it (" + e.getMessage() + ")";
         }
     }
 
@@ -251,6 +311,8 @@ public final class PocketService extends Service {
                     running = null;
                     runningName = null;
                     updateNotification(null);
+                    if (bootStage != null)
+                        bootStage = "The home screen stopped before it showed. Its log is files/logs/" + name + ".log.";
                 }
             }
         }, "watch " + name);
@@ -265,6 +327,7 @@ public final class PocketService extends Service {
         running.destroy();
         running = null;
         runningName = null;
+        bootStage = null;
         try {
             runtime.shutdown().start().waitFor();
         } catch (IOException | InterruptedException e) {

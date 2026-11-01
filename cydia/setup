@@ -4,6 +4,8 @@
 # runtime: Procursus's (dpkg, apt and their tools) are unpacked in /var/jb,
 # the rest are debs in /usr/share/darling-pocket/debs. Does nothing once done.
 set -euo pipefail
+# What the boot screen shows: fd 3 is the home script's output, when it is open.
+stage() { { echo "darling-pocket: stage $*" >&3; } 2>/dev/null || true; }
 marker=/var/lib/cydia/darling-pocket-setup
 # Cydia 1.1.30 runs APT's download methods from its bundle (linked below).
 # Without this its APT looks in /usr/lib/apt/methods, finds nothing, and a
@@ -14,6 +16,19 @@ echo 'Dir::Bin::Methods "/Applications/Cydia.app/";' > /etc/apt/apt.conf.d/50cyd
 here=/usr/libexec/darling-pocket
 debs=/usr/share/darling-pocket/debs
 export PATH=/var/jb/gnu:/usr/bin:/bin:/usr/sbin:/sbin:/var/jb/usr/bin:/var/jb/bin
+# On iOS /var is /private/var. A Darling prefix makes /var a folder of its
+# own, so the paths Cydia and Procursus use are links into /private/var, made
+# before anything below writes there. A folder in their place (setup used to
+# make /var/mobile first, and Cydia then died at launch: its caches were in
+# the other one) is merged into /private/var.
+for d in jb mobile cache; do
+	if [ -d /var/$d ] && [ ! -L /var/$d ]; then
+		mkdir -p /private/var/$d
+		cp -Rpn /var/$d/. /private/var/$d/
+		rm -rf /var/$d
+	fi
+	[ -e /var/$d ] || ln -s /private/var/$d /var/$d
+done
 # On iOS the apps' home is /var/mobile, so their preferences and the ones
 # tweaks write by path (/User/Library/Preferences) are the same files. Apps
 # here have a macOS home: its Preferences folder becomes a link to iOS's,
@@ -37,17 +52,17 @@ if [ -e "$marker" ]; then
 			name=${deb##*/}
 			dpkg-query -W -f='${Status}' "${name%%_*}" 2>/dev/null | grep -q 'ok installed' || new="$new $deb"
 		done
-		[ -z "$new" ] || dpkg --force-not-root -i $new
+		if [ -n "$new" ]; then
+			set -- $new
+			stage "Installing updated packages ($#)"
+			dpkg --force-not-root -i $new
+		fi
 		ls $debs > "$stamp"
 	fi
 	exit 0
 fi
 
-# On iOS /var is /private/var; a Darling prefix has both, so the paths Cydia
-# and Procursus use point into /private/var.
-for d in jb mobile cache; do
-	[ -e /var/$d ] || ln -s /private/var/$d /var/$d
-done
+stage "Setting up Cydia (first start, a few minutes)"
 # Cydia's postinst would make its folders as the mobile user, with su.
 mkdir -p /private/var/mobile/Library/Logs/Cydia /private/var/mobile/Library/Caches/com.saurik.Cydia \
 	/private/var/mobile/Library/Cydia \

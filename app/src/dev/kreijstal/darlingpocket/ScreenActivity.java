@@ -2,9 +2,14 @@ package dev.kreijstal.darlingpocket;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Color;
 import android.graphics.Insets;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.DisplayCutout;
 import android.view.SurfaceHolder;
 import android.view.View;
@@ -14,6 +19,9 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 
 /**
  * The phone's screen for iOS apps: the whole window is the display, drawn
@@ -28,6 +36,12 @@ public final class ScreenActivity extends Activity implements SurfaceHolder.Call
     private int top, left, bottom, right;
     private int keyboard = -1;
     private String sent = "";
+    // Over the screen until the home screen's first frame: what it is waiting for.
+    private View boot;
+    private ProgressBar spinner;
+    private TextView stage;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable updateBoot = this::updateBoot;
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -68,11 +82,68 @@ public final class ScreenActivity extends Activity implements SurfaceHolder.Call
             ((ViewGroup) pages.getParent()).removeView(pages);
         root.addView(pages, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
+        boot = bootScreen();
+        root.addView(boot, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
         setContentView(root);
         PocketDisplay.setKeyboardListener(keyboard -> runOnUiThread(() -> view.setKeyboard(keyboard)));
 
         hideNavigation();
         launch(getIntent());
+    }
+
+    private View bootScreen() {
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setGravity(Gravity.CENTER);
+        column.setBackgroundColor(Color.BLACK);
+        // Touches wait too: they would reach the screen under it.
+        column.setClickable(true);
+        TextView name = new TextView(this);
+        name.setText("Darling Pocket");
+        name.setTextColor(Color.WHITE);
+        name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 28);
+        column.addView(name);
+        spinner = new ProgressBar(this, null, android.R.attr.progressBarStyleLarge);
+        LinearLayout.LayoutParams spaced = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        int margin = (int) (32 * getResources().getDisplayMetrics().density);
+        spaced.setMargins(0, margin, 0, margin);
+        column.addView(spinner, spaced);
+        stage = new TextView(this);
+        stage.setTextColor(Color.LTGRAY);
+        stage.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        stage.setGravity(Gravity.CENTER);
+        stage.setPadding(margin, 0, margin, 0);
+        column.addView(stage);
+        return column;
+    }
+
+    /** Follows the home screen's start until it shows, then gets out of the way. */
+    private void updateBoot() {
+        handler.removeCallbacks(updateBoot);
+        String now = PocketService.bootStage();
+        if (now == null) {
+            boot.setVisibility(View.GONE);
+            return;
+        }
+        boot.setVisibility(View.VISIBLE);
+        boolean stopped = now.startsWith("The home screen stopped");
+        spinner.setVisibility(stopped ? View.INVISIBLE : View.VISIBLE);
+        stage.setText(now);
+        handler.postDelayed(updateBoot, 300);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        updateBoot();
+    }
+
+    @Override
+    protected void onPause() {
+        handler.removeCallbacks(updateBoot);
+        super.onPause();
     }
 
     @SuppressWarnings("deprecation")
@@ -106,9 +177,13 @@ public final class ScreenActivity extends Activity implements SurfaceHolder.Call
         String executable = intent.getStringExtra(PocketService.EXTRA_EXECUTABLE);
         if (executable == null)
             executable = PocketService.HOME_SCREEN;
+        if (PocketService.HOME_SCREEN.equals(executable))
+            PocketService.expectHomeScreen();
         Intent launch = new Intent(this, PocketService.class).setAction(PocketService.ACTION_LAUNCH)
                 .putExtra(PocketService.EXTRA_EXECUTABLE, executable);
         startService(launch);
+        if (boot != null)
+            updateBoot();
     }
 
     /** The bars' and the cutout's insets: the keyboard's are not the safe area. */

@@ -20,8 +20,8 @@ LIB := out/lib/arm64-v8a
 APK := out/darling-pocket.apk
 JAVA := $(shell find app/src -name '*.java')
 POCKET := $(DARLING)/tools/pocket-host
-VERSION_CODE := 3
-VERSION_NAME := 0.1.2
+VERSION_CODE := 4
+VERSION_NAME := 0.1.3
 # Where the app downloads its runtime archive: the release of this version.
 RUNTIME_URL ?= https://github.com/Kreijstal/darling-pocket/releases/download/v$(VERSION_NAME)/darling-runtime.tar.gz
 .DELETE_ON_ERROR:

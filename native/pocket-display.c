@@ -25,7 +25,7 @@
 
 static JavaVM *vm;
 static jclass display_class;
-static jmethodID on_keyboard;
+static jmethodID on_keyboard, on_first_frame;
 
 static struct pocket_server *server;
 static pthread_t thread;
@@ -37,6 +37,8 @@ static int wake[2] = {-1, -1};
 static pthread_mutex_t surface_lock = PTHREAD_MUTEX_INITIALIZER;
 static ANativeWindow *surface;
 static int dirty;
+// Set until an app presents its first frame: the boot screen waits for it.
+static volatile int awaiting_frame;
 
 // Asks the server's thread to draw ('d') or to stop ('q').
 static void poke(char byte)
@@ -60,24 +62,48 @@ static void draw(void)
 	pthread_mutex_unlock(&surface_lock);
 }
 
+static JNIEnv *java_env(int *attached)
+{
+	JNIEnv *env;
+	*attached = 0;
+	if ((*vm)->GetEnv(vm, (void **) &env, JNI_VERSION_1_6) != JNI_OK) {
+		if ((*vm)->AttachCurrentThread(vm, &env, NULL) != JNI_OK)
+			return NULL;
+		*attached = 1;
+	}
+	return env;
+}
+
 static void log_line(void *context, const char *line)
 {
 	(void) context;
 	// Frames are too many to log.
-	if (strncmp(line, "present ", 8) != 0)
+	if (strncmp(line, "present ", 8) != 0) {
 		log("%s", line);
+		return;
+	}
+	// A window closing also redraws the screen; only a frame an app drew ends the wait.
+	if (awaiting_frame) {
+		awaiting_frame = 0;
+		int attached;
+		JNIEnv *env = java_env(&attached);
+		if (env == NULL)
+			return;
+		(*env)->CallStaticVoidMethod(env, display_class, on_first_frame);
+		if ((*env)->ExceptionCheck(env))
+			(*env)->ExceptionClear(env);
+		if (attached)
+			(*vm)->DetachCurrentThread(vm);
+	}
 }
 
 static void keyboard(void *context, const struct pocket_keyboard *k)
 {
 	(void) context;
-	JNIEnv *env;
-	int attached = 0;
-	if ((*vm)->GetEnv(vm, (void **) &env, JNI_VERSION_1_6) != JNI_OK) {
-		if ((*vm)->AttachCurrentThread(vm, &env, NULL) != JNI_OK)
-			return;
-		attached = 1;
-	}
+	int attached;
+	JNIEnv *env = java_env(&attached);
+	if (env == NULL)
+		return;
 	(*env)->CallStaticVoidMethod(env, display_class, on_keyboard, (jboolean) (k->shown != 0), (jint) k->keyboard_type,
 	                             (jint) k->return_key, (jint) k->autocapitalization, (jint) k->autocorrection,
 	                             (jint) k->flags);
@@ -138,7 +164,8 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *java, void *reserved)
 		return JNI_ERR;
 	display_class = (*env)->NewGlobalRef(env, found);
 	on_keyboard = (*env)->GetStaticMethodID(env, display_class, "onKeyboard", "(ZIIIII)V");
-	if (on_keyboard == NULL)
+	on_first_frame = (*env)->GetStaticMethodID(env, display_class, "onFirstFrame", "()V");
+	if (on_keyboard == NULL || on_first_frame == NULL)
 		return JNI_ERR;
 	return JNI_VERSION_1_6;
 }
@@ -282,4 +309,11 @@ JNIEXPORT jint JNICALL Java_dev_kreijstal_darlingpocket_PocketDisplay_windowPart
 		values[i] = part[i];
 	(*env)->SetIntArrayRegion(env, rect, 0, 4, values);
 	return shows;
+}
+
+JNIEXPORT void JNICALL Java_dev_kreijstal_darlingpocket_PocketDisplay_awaitFrame(JNIEnv *env, jclass cls)
+{
+	(void) env;
+	(void) cls;
+	awaiting_frame = 1;
 }
