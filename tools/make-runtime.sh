@@ -37,6 +37,7 @@ TAR=(tar --format=gnu --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0
 "${TAR[@]}" -C "$ROOT" \
 	--exclude=libexec/darling/bin/mldr --exclude=libexec/darling/usr/libexec/darling/mldr \
 	--exclude=libexec/darling/usr/share/zoneinfo \
+	--exclude=libexec/darling/Applications/HelloSwiftUI.app \
 	-cf "$ARCHIVE.tar" libexec/darling "${OVERLAYS[@]}"
 "${TAR[@]}" -C "$TZROOT" -rf "$ARCHIVE.tar" libexec/darling/usr/share/zoneinfo
 gzip -n -6 < "$ARCHIVE.tar" > "$ARCHIVE.part"
