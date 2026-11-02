@@ -1,0 +1,4 @@
+#!/bin/sh
+# apt-key needs Procursus's apt-config, gpgv and GNU mktemp options.
+export PATH=/var/jb/usr/bin:/var/jb/bin:/usr/bin:/bin:/usr/sbin:/sbin
+exec /var/jb/usr/bin/apt-key "$@"

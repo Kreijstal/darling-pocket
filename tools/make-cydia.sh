@@ -134,7 +134,7 @@ sed -f "$HERE/cydia/firmware.sed" "$WORK/cydia/data/usr/libexec/cydia/firmware.s
 [ "$(grep -c -e iOSSupportVersion -e 'version=0$' "$LIBEXEC/firmware.sh")" = 2 ] \
 	|| { echo "cydia/firmware.sed no longer fits Cydia's firmware.sh" >&2; exit 1; }
 
-install -m 755 "$HERE"/cydia/{setup,home,cydo,gssc,cfversion,setnsfpn,du} "$LIBEXEC/"
+install -m 755 "$HERE"/cydia/{setup,home,apt-key,cydo,gssc,cfversion,setnsfpn,du} "$LIBEXEC/"
 chmod 755 "$LIBEXEC/firmware.sh"
 rm -rf "$WORK"
 du -sh "$OUT/root"

@@ -12,7 +12,8 @@ marker=/var/lib/cydia/darling-pocket-setup
 # refresh waits forever with no download started. Written on every start, so
 # containers set up before it get it too.
 mkdir -p /etc/apt/apt.conf.d
-echo 'Dir::Bin::Methods "/Applications/Cydia.app/";' > /etc/apt/apt.conf.d/50cydia-methods
+printf '%s\n' 'Dir::Bin::Methods "/Applications/Cydia.app/";' \
+	'Dir::Bin::apt-key "/usr/libexec/darling-pocket/apt-key";' > /etc/apt/apt.conf.d/50cydia-methods
 here=/usr/libexec/darling-pocket
 debs=/usr/share/darling-pocket/debs
 export PATH=/var/jb/gnu:/usr/bin:/bin:/usr/sbin:/sbin:/var/jb/usr/bin:/var/jb/bin
