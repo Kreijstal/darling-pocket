@@ -16,7 +16,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -127,18 +126,16 @@ public final class MainActivity extends Activity {
         File pushed = Runtime.pushedArchive(this);
         if (pushed != null && pushed.isFile()) {
             background("Installing the runtime from " + pushed, () -> {
-                try (InputStream in = new FileInputStream(pushed)) {
-                    runtime.install(in, this::show);
-                }
+                runtime.install(pushed, this::show);
                 pushed.delete();
                 runtime.createContainer(this::show);
                 show("The runtime is installed.");
             });
         } else {
             background("Downloading the runtime", () -> {
-                try (InputStream in = Runtime.download(this::show)) {
-                    runtime.install(in, this::show);
-                }
+                File archive = runtime.download(this::show);
+                runtime.install(archive, this::show);
+                archive.delete();
                 runtime.createContainer(this::show);
                 show("The runtime is installed.");
             });

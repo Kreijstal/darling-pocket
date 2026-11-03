@@ -7,7 +7,6 @@ import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -84,62 +83,122 @@ final class Runtime {
     }
 
     /**
-     * Opens the runtime archive this app was built for, from its release
-     * ({@link BuildConfig#RUNTIME_URL}), reporting each megabyte that comes.
+     * Downloads the runtime archive this app was built for, from its release
+     * ({@link BuildConfig#RUNTIME_URL}), into {@code files}, reporting each
+     * megabyte that comes. An interrupted download is kept and resumed with a
+     * Range request, on the next attempt or the next start of the app.
      */
-    static InputStream download(Progress progress) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(BuildConfig.RUNTIME_URL).openConnection();
-        // Hash the exact published tar.gz bytes, without transparent HTTP decoding.
-        connection.setRequestProperty("Accept-Encoding", "identity");
-        connection.setConnectTimeout(30000);
-        connection.setReadTimeout(60000);
-        int code = connection.getResponseCode();
-        if (code != HttpURLConnection.HTTP_OK) {
-            connection.disconnect();
-            throw new IOException("Downloading " + BuildConfig.RUNTIME_URL + ": HTTP " + code);
-        }
-        long total = connection.getContentLengthLong() >> 20;
-        return new FilterInputStream(connection.getInputStream()) {
-            private long done, shown = -1;
-
-            @Override
-            public int read(byte[] buffer, int offset, int length) throws IOException {
-                int n = super.read(buffer, offset, length);
-                if (n > 0 && (done += n) >> 20 != shown) {
-                    shown = done >> 20;
-                    progress.update("Downloading the runtime: " + shown + (total > 0 ? " of " + total : "") + " MB");
-                }
-                return n;
-            }
-
-            @Override
-            public void close() throws IOException {
+    File download(Progress progress) throws IOException {
+        String name = "runtime-" + BuildConfig.RUNTIME_SHA256.substring(0, 12) + ".tar.gz";
+        File done = new File(files, name), part = new File(files, name + ".part");
+        // Partial downloads of other versions will never complete.
+        File[] stale = files.listFiles((dir, n) -> n.startsWith("runtime-") && !n.startsWith(name));
+        if (stale != null)
+            for (File f : stale)
+                f.delete();
+        if (done.isFile())
+            return done;
+        IOException last = null;
+        for (int attempt = 0; attempt < 30; attempt++) {
+            if (attempt > 0) {
+                progress.update("The download was interrupted (" + last.getMessage() + "); resuming at "
+                        + (part.length() >> 20) + " MB");
                 try {
-                    super.close();
-                } finally {
-                    connection.disconnect();
+                    Thread.sleep(Math.min(30000, 2000L * attempt));
+                } catch (InterruptedException e) {
+                    throw new IOException(e);
                 }
             }
-        };
+            try {
+                if (fetch(part, progress)) {
+                    if (!part.renameTo(done))
+                        throw new IOException("Cannot rename " + part);
+                    return done;
+                }
+            } catch (IOException e) {
+                last = e;
+            }
+        }
+        throw new IOException("Downloading " + BuildConfig.RUNTIME_URL + ": " + last.getMessage()
+                + ". Install the runtime again to resume.");
+    }
+
+    /** Appends the rest of the archive to {@code part}; true once it is complete. */
+    private static boolean fetch(File part, Progress progress) throws IOException {
+        long have = part.length();
+        HttpURLConnection connection = (HttpURLConnection) new URL(BuildConfig.RUNTIME_URL).openConnection();
+        try {
+            // Hash the exact published tar.gz bytes, without transparent HTTP decoding.
+            connection.setRequestProperty("Accept-Encoding", "identity");
+            if (have > 0)
+                connection.setRequestProperty("Range", "bytes=" + have + "-");
+            connection.setConnectTimeout(30000);
+            connection.setReadTimeout(60000);
+            int code = connection.getResponseCode();
+            if (code == 416 && have > 0)
+                return true; // nothing past what we have: it is all here
+            boolean append = code == HttpURLConnection.HTTP_PARTIAL;
+            if (!append && code != HttpURLConnection.HTTP_OK)
+                throw new IOException("HTTP " + code);
+            if (!append)
+                have = 0; // the server ignored the range: start over
+            long length = connection.getContentLengthLong();
+            long total = length < 0 ? -1 : (have + length) >> 20;
+            try (InputStream in = connection.getInputStream();
+                    OutputStream out = new FileOutputStream(part, append)) {
+                byte[] buffer = new byte[1 << 16];
+                long got = have, shown = -1;
+                for (int n; (n = in.read(buffer)) > 0;) {
+                    out.write(buffer, 0, n);
+                    if ((got += n) >> 20 != shown) {
+                        shown = got >> 20;
+                        progress.update("Downloading the runtime: " + shown + (total >= 0 ? " of " + total : "") + " MB");
+                    }
+                }
+                if (length >= 0 && got != have + length)
+                    throw new IOException("the connection closed early");
+            }
+            return true;
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    /**
+     * Unpacks a runtime archive (tar.gz of {@code libexec/darling}) after
+     * checking its sha256, staging it in the cache first.
+     */
+    void install(InputStream archive, Progress progress) throws IOException {
+        progress.update("Copying the runtime archive");
+        File staged = new File(cache, "runtime.tar.gz");
+        try (OutputStream out = new FileOutputStream(staged)) {
+            copy(archive, out);
+        }
+        try {
+            install(staged, progress);
+        } finally {
+            staged.delete();
+        }
     }
 
     /**
      * Unpacks a runtime archive (tar.gz of {@code libexec/darling}) after
      * checking its sha256. The old tree is removed first; the container is kept.
+     * An archive that does not match is deleted, so a new download starts clean.
      */
-    void install(InputStream archive, Progress progress) throws IOException {
+    void install(File archive, Progress progress) throws IOException {
         progress.update("Checking the runtime archive");
-        File staged = new File(cache, "runtime.tar.gz");
         String sha256;
-        try (DigestInputStream in = new DigestInputStream(archive, MessageDigest.getInstance("SHA-256"));
-                OutputStream out = new FileOutputStream(staged)) {
-            copy(in, out);
+        try (DigestInputStream in = new DigestInputStream(new FileInputStream(archive), MessageDigest.getInstance("SHA-256"))) {
+            byte[] buffer = new byte[1 << 16];
+            while (in.read(buffer) > 0)
+                ;
             sha256 = hex(in.getMessageDigest().digest());
         } catch (NoSuchAlgorithmException e) {
             throw new IOException(e);
         }
         if (!BuildConfig.RUNTIME_SHA256.equals(sha256)) {
-            staged.delete();
+            archive.delete();
             throw new IOException("This runtime archive does not match Darling Pocket " + BuildConfig.VERSION_NAME
                     + ". Use Install the runtime to download this version's archive. (sha256 " + sha256
                     + ", expected " + BuildConfig.RUNTIME_SHA256 + ")");
@@ -149,10 +208,8 @@ final class Runtime {
         deleteTree(install);
         if (!install.mkdirs())
             throw new IOException("Cannot create " + install);
-        try (InputStream in = new GZIPInputStream(new BufferedInputStream(new FileInputStream(staged), 1 << 16))) {
+        try (InputStream in = new GZIPInputStream(new BufferedInputStream(new FileInputStream(archive), 1 << 16))) {
             Tar.extract(in, install, progress);
-        } finally {
-            staged.delete();
         }
         adapt();
         try (OutputStream out = new FileOutputStream(stamp())) {
