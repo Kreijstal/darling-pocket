@@ -10,7 +10,7 @@
 #   libfreetype.so   FreeType 2 (PNG + zlib; no harfbuzz/brotli/bzip2)
 #   libfontconfig.so fontconfig (expat linked in statically, symbols hidden)
 #   libpng.so        libpng 1.6
-#   libjpeg.so       libjpeg-turbo (libjpeg API)
+#   libjpeg.so       libjpeg-turbo (libjpeg 8 API, as distributions ship it)
 #   libtiff.so       libtiff 4 (jpeg + zlib only)
 #   libgif.so        giflib 5
 #
@@ -160,14 +160,20 @@ export PKG_CONFIG_SYSROOT_DIR=
 mkdir -p "$SRC" "$BUILD" "$SYSROOT/include" "$SYSROOT/lib" "$OUT"
 
 # ------------------------------------------------------------- libjpeg ----
+# Darling's Onyx2D is built against a distribution's jpeglib.h, which is the
+# libjpeg 8 API (JPEG_LIB_VERSION 80); the default 6.2 API refuses every
+# jpeg_create_decompress call it makes.
+jpeg8_built() { grep -q '^#define JPEG_LIB_VERSION  *80$' "$SYSROOT/include/jconfig.h" 2>/dev/null; }
+
 build_libjpeg() {
-	built libjpeg libjpeg.so && return
+	built libjpeg libjpeg.so && jpeg8_built && return
 	local s b; s=$(unpack libjpeg-turbo); b=$(fresh_builddir libjpeg)
 	log "libjpeg-turbo $LIBJPEG_TURBO_VER"
 	# On Android CMake drops versioned SONAMEs, so this is libjpeg.so/libjpeg.so.
 	cmake -S "$s" -B "$b" "${CMAKE_COMMON[@]}" \
 		-DENABLE_SHARED=ON -DENABLE_STATIC=OFF \
 		-DWITH_TURBOJPEG=OFF -DWITH_TOOLS=OFF -DWITH_TESTS=OFF \
+		-DWITH_JPEG8=ON \
 		-DWITH_SIMD=ON -DREQUIRE_SIMD=ON
 	cmake --build "$b" -j "$JOBS"
 	cmake --install "$b"
@@ -301,7 +307,8 @@ build_fontconfig() {
 
 # ---------------------------------------------------------------- tiff ----
 build_tiff() {
-	built tiff libtiff.so && return
+	# Built against this libjpeg's headers, so again after it changes.
+	built tiff libtiff.so && [[ $BUILD/tiff/.built -nt $BUILD/libjpeg/.built ]] && return
 	local s b; s=$(unpack tiff); b=$(fresh_builddir tiff)
 	log "libtiff $TIFF_VER"
 	cmake -S "$s" -B "$b" "${CMAKE_COMMON[@]}" \
