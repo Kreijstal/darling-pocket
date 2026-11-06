@@ -55,6 +55,10 @@ Darling's `docs/ios-pocket.md`; this is its phase 4, the APK.
     screen. An alarm rings until it is dismissed.
   - The alarm is set again when the phone restarts and when the app is
     updated.
+- **App stores:** apps such as Feather install through `itms-services://`
+  links. frontboardd hands each link to Darling's `installd`, which fetches
+  the manifest and the IPA (from the store's own server on the phone, too)
+  and puts the app in `/Applications`, as the manager does.
 - **Time zones:** the runtime archive carries a zoneinfo tree, because
   Android has no `/usr/share/zoneinfo`. The phone's zone reaches the apps as
   `$TZ`.
