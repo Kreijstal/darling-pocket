@@ -194,6 +194,10 @@ public final class MainActivity extends Activity {
             return;
         busy = true;
         show(what);
+        // The service is a foreground service: while it runs, Android keeps this
+        // process and its network when the user leaves the app (a background app
+        // loses both, which broke the runtime's download halfway).
+        startService(new Intent(this, PocketService.class));
         new Thread(() -> {
             try {
                 work.run();
