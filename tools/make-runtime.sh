@@ -19,6 +19,10 @@ for overlay in "$@"; do
 	OVERLAYS+=(-C "$overlay" libexec/darling)
 done
 [ -d "$ROOT/libexec/darling/System" ] || { echo "no libexec/darling/System under $ROOT" >&2; exit 1; }
+# `ninja install` leaves the small source-compatible SwiftUI there; apps built
+# with Apple's SDK need the ABI one, built by Darling's src/frameworks/SwiftUI/abi/build.sh.
+SWIFTUI=$ROOT/libexec/darling/System/iOSSupport/System/Library/Frameworks/SwiftUI.framework/Versions/A/SwiftUI
+[ "$(stat -Lc %s "$SWIFTUI")" -gt 1000000 ] || { echo "$SWIFTUI is not the ABI SwiftUI" >&2; exit 1; }
 mkdir -p "$HERE/out"
 # Darling links /usr/share/zoneinfo to the host's, and Android has none (its
 # zones are one tzdata file): the archive carries this machine's instead.
